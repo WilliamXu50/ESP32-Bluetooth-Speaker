@@ -127,16 +127,6 @@ static void bt_i2s_task_handler(void *arg)
     for (;;) {
         data = (uint8_t *)xRingbufferReceive(s_ringbuf_i2s, &item_size, (portTickType)portMAX_DELAY);
         if (item_size != 0){
-            /*int16_t * pcmdata = (int16_t *)data;
-			for (int i=0; i<item_size/2; i++) {
-				int32_t temp = (int32_t)(*pcmdata);
-				temp = temp * s_volume;
-				temp = temp/512;
-				pcmdata = ((*pcmdata)*s_volume)/127;
-				*pcmdata = (int16_t)temp;
-				pcmdata++;
-			}*/
-
             i2s_write(0, data, item_size, &bytes_written, portMAX_DELAY);
             vRingbufferReturnItem(s_ringbuf_i2s,(void *)data);
         }
