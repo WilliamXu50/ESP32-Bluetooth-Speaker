@@ -36,3 +36,5 @@ Interface between ESP32 and AMC2004AR-B-Y6WFDY-SPI:
 # Requirements
 This project requires you to install the `ESP-IDF` Framework and Toolchain for either Windows or Linux. Once installed, you can open the ESP-IDF CMD (ESP command prompt), navigate to the project directory and modify the original source code. 
 
+# Future Work
+I am planning to display the current time onto the LCD as well. This can be achieved by establishing a SNTP (Simple Network Time Protocol).
