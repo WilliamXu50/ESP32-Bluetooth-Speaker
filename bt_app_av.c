@@ -50,6 +50,7 @@ static _lock_t s_volume_lock;
 //static xTaskHandle s_vcs_task_hdl = NULL;
 uint8_t s_volume = 0;
 static bool s_volume_notify;
+char temp_str[14];
 
 /* callback for A2DP sink */
 void bt_app_a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param)
@@ -145,6 +146,22 @@ static void bt_av_hdl_a2d_evt(uint16_t event, void *p_param)
         uint8_t *bda = a2d->conn_stat.remote_bda;
         ESP_LOGI(BT_AV_TAG, "A2DP connection state: %s, [%02x:%02x:%02x:%02x:%02x:%02x]",
             s_a2d_conn_state_str[a2d->conn_stat.state], bda[0], bda[1], bda[2], bda[3], bda[4], bda[5]);
+	    
+	if(strcmp(s_a2d_conn_state_str[a2d->conn_stat.state], "Disconnected")==0){
+            memset(lcd_dsp_line1, 0x20, LCD_DSP_LINE_MAX_CHAR+1);
+            int char_copied=sprintf(lcd_dsp_line1, "State: %s", "Disconnected");
+            lcd_dsp_line1[char_copied]=0x20;
+            lcd_spi_send_cmd(lcd_spi_handle, 0x80);
+            lcd_spi_send_string(lcd_spi_handle, lcd_dsp_line1, LCD_DSP_LINE_MAX_CHAR);
+        }
+        else if(strcmp(s_a2d_conn_state_str[a2d->conn_stat.state], "Connected")==0){
+            memset(lcd_dsp_line1, 0x20, LCD_DSP_LINE_MAX_CHAR+1);
+            int char_copied=sprintf(lcd_dsp_line1, "State: %s", "Connected");
+            lcd_dsp_line1[char_copied]=0x20;
+            lcd_spi_send_cmd(lcd_spi_handle, 0x80);
+            lcd_spi_send_string(lcd_spi_handle, lcd_dsp_line1, LCD_DSP_LINE_MAX_CHAR);
+        }
+	    
         if (a2d->conn_stat.state == ESP_A2D_CONNECTION_STATE_DISCONNECTED) {
             esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
             bt_i2s_task_shut_down();
@@ -274,6 +291,43 @@ static void bt_av_hdl_avrc_ct_evt(uint16_t event, void *p_param)
     }
     case ESP_AVRC_CT_METADATA_RSP_EVT: {
         ESP_LOGI(BT_RC_CT_TAG, "AVRC metadata rsp: attribute id 0x%x, %s", rc->meta_rsp.attr_id, rc->meta_rsp.attr_text);
+	    
+	//Name of the song has AVRCP metadata response ID = 0x01
+        if(rc->meta_rsp.attr_id==0x01){
+            if(rc->meta_rsp.attr_length){       //Data must be valid data, not garbage data
+    
+                /* LCD 2nd line display: 
+                
+                Track: _ _ _ _ _ _ _ _ _ _ _ _ _ _ <- 13 character slots left for song name to fit */
+
+                //If the song name exceeds 13 characters, only send the first 13 characters to the LCD
+                if(strlen((char*)rc->meta_rsp.attr_text)>13){
+                    lcd_spi_send_cmd(lcd_spi_handle, 0x1B|0x80);
+                    lcd_spi_send_string(lcd_spi_handle, (char*)rc->meta_rsp.attr_text, 13);
+                }
+
+                //Else, send all the characters of the song name and fill the empty slots with 
+                //blank spaces (hex: 0x20)
+                else{
+                    strncpy(temp_str, (char*)rc->meta_rsp.attr_text, 13);
+
+                    for(int i=strlen((char*)rc->meta_rsp.attr_text); i<13; i++){
+                        temp_str[i]=0x20;
+                    }
+
+                    lcd_spi_send_cmd(lcd_spi_handle, 0x1B|0x80);
+                    lcd_spi_send_string(lcd_spi_handle, temp_str, 13);
+                }
+            }   
+            //If metadata unavailable, just display "Unavailable" on LCD
+            else{
+                lcd_spi_send_cmd(lcd_spi_handle, 0x1B|0x80);
+                lcd_spi_send_string(lcd_spi_handle, "Unavailable  ", strlen("Unavailable  "));
+            }
+        }
+
+        memset(temp_str, 0x20, 14);
+	    
         free(rc->meta_rsp.attr_text);
         break;
     }
