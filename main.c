@@ -92,7 +92,75 @@ void app_main(void)
     i2s_set_pin(0, &pin_config);
 #endif
 
+/************************************************************************************/
+                             /* Configure SPI interface*/
+/************************************************************************************/
+    spi_bus_config_t bus_config={
+        .mosi_io_num=PIN_NUM_MOSI,
+        .miso_io_num=-1,
+        .sclk_io_num=PIN_NUM_SCK,
+        .quadhd_io_num=-1,
+        .quadwp_io_num=-1,
+        .max_transfer_sz=LCD_DSP_LINE_MAX_CHAR
+    };
 
+    spi_device_interface_config_t dev_config={
+        .mode=3,
+        .spics_io_num=PIN_NUM_CS,
+        .clock_speed_hz=540*1000,
+        .queue_size=LCD_DSP_LINE_MAX_CHAR
+    };
+
+    esp_err_t ret_err;
+    //Initialize a SPI bus
+    ret_err=spi_bus_initialize(LCD_HOST, &bus_config, SPI_DMA_CH_AUTO);
+    ESP_ERROR_CHECK(ret_err);
+
+    //Attach the device onto the SPI bus
+    ret_err=spi_bus_add_device(LCD_HOST, &dev_config, &lcd_spi_handle);
+    ESP_ERROR_CHECK(ret_err);
+
+    gpio_set_direction(PIN_NUM_RS, GPIO_MODE_OUTPUT);
+
+    //Initiate the LCD power-on sequence, according to LCD datasheet
+    //The printf() are just used for debugging purposes on the serial output
+    vTaskDelay(40/portTICK_PERIOD_MS);
+    lcd_spi_send_cmd(lcd_spi_handle, 0x3C);
+    printf("Function set cmd transferred\n");
+    delay_us(100);
+    lcd_spi_send_cmd(lcd_spi_handle, 0x0C);
+    printf("Display ON/OFF\n");
+    delay_us(100);
+    lcd_spi_send_cmd(lcd_spi_handle, 0x01);
+    printf("Display Cleared\n");
+    vTaskDelay(10/portTICK_PERIOD_MS);
+    lcd_spi_send_cmd(lcd_spi_handle, 0x06);
+    printf("Entry mode set\n");
+    delay_us(100);
+
+    //Display initial messages
+    memset(lcd_dsp_line1, 0x20, LCD_DSP_LINE_MAX_CHAR+1);
+    int char_copied=sprintf(lcd_dsp_line1, "State: Disconnected");
+    lcd_dsp_line1[char_copied]=0x20;        //Replace null-terminator with blank space
+    lcd_spi_send_cmd(lcd_spi_handle, 0x80);
+    lcd_spi_send_string(lcd_spi_handle, lcd_dsp_line1, LCD_DSP_LINE_MAX_CHAR);
+
+    memset(lcd_dsp_line2, 0x20, LCD_DSP_LINE_MAX_CHAR+1);
+    char_copied=sprintf(lcd_dsp_line2, "BtName: ---");
+    lcd_dsp_line2[char_copied]=0x20;
+    lcd_spi_send_cmd(lcd_spi_handle, LCD_SECOND_LINE_BASE_ADDR|0x80);
+    lcd_spi_send_string(lcd_spi_handle, lcd_dsp_line2, LCD_DSP_LINE_MAX_CHAR);
+
+    memset(lcd_dsp_line3, 0x20, LCD_DSP_LINE_MAX_CHAR+1);
+    char_copied=sprintf(lcd_dsp_line3, "Track: N/A");
+    lcd_dsp_line3[char_copied]=0x20;
+    lcd_spi_send_cmd(lcd_spi_handle, LCD_THIRD_LINE_BASE_ADDR|0x80);
+    lcd_spi_send_string(lcd_spi_handle, lcd_dsp_line3, LCD_DSP_LINE_MAX_CHAR);
+    
+/************************************************************************************/
+                            /* Setup & Configure Bluetooth*/
+/************************************************************************************/
+    
     ESP_ERROR_CHECK(esp_bt_controller_mem_release(ESP_BT_MODE_BLE));
 
     esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
@@ -203,6 +271,12 @@ static void bt_av_hdl_stack_evt(uint16_t event, void *p_param)
         char *dev_name = "ESP_SPEAKER";
         esp_bt_dev_set_device_name(dev_name);
 
+        memset(lcd_dsp_line2, 0x20, LCD_DSP_LINE_MAX_CHAR+1);
+        int char_copied=sprintf(lcd_dsp_line2, "BtName: %s", dev_name);
+        lcd_dsp_line2[char_copied]=0x20;
+        lcd_spi_send_cmd(lcd_spi_handle, LCD_SECOND_LINE_BASE_ADDR|0x80);
+        lcd_spi_send_string(lcd_spi_handle, lcd_dsp_line2, LCD_DSP_LINE_MAX_CHAR);
+        
         esp_bt_gap_register_callback(bt_app_gap_cb);
 
         /* initialize AVRCP controller */
